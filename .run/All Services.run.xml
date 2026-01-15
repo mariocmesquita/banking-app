@@ -1,0 +1,9 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="All Services" type="CompoundRunConfigurationType">
+    <toRun name="ApiGateway" type="LaunchSettings" />
+    <toRun name="CheckingAccountService" type="LaunchSettings" />
+    <toRun name="FeeService" type="LaunchSettings" />
+    <toRun name="TransferService" type="LaunchSettings" />
+    <method v="2" />
+  </configuration>
+</component>

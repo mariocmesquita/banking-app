@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Dapper" />
+        <PackageReference Include="Microsoft.Data.Sqlite" />
+        <PackageReference Include="KafkaFlow" />
+        <PackageReference Include="KafkaFlow.Microsoft.DependencyInjection" />
+        <PackageReference Include="KafkaFlow.Serializer.JsonCore" />
+        <PackageReference Include="KafkaFlow.TypedHandler" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\BankingApp.FeeService.Domain\BankingApp.FeeService.Domain.csproj"/>
+        <ProjectReference Include="..\BankingApp.FeeService.Application\BankingApp.FeeService.Application.csproj"/>
+    </ItemGroup>
+
+</Project>

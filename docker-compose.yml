@@ -1,0 +1,190 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: bankingapp-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - bankingapp-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: bankingapp-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - bankingapp-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "kafka-topics",
+          "--bootstrap-server",
+          "localhost:9092",
+          "--list",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: bankingapp-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - bankingapp-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: bankingapp-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: bankingapp
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - bankingapp-network
+
+  # CheckingAccountService - Serviço de contas correntes
+  checking-account-service:
+    build:
+      context: .
+      dockerfile: src/Services/CheckingAccountService/BankingApp.CheckingAccountService.Api/Dockerfile
+    container_name: bankingapp-checking-account-service
+    ports:
+      - "5001:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: "Data Source=/app/data/checking_account.db"
+      Jwt__SecretKey: "SrDPW2DT5H9Cm_VKHsL-h*lh6SGB9A1U"
+      Jwt__Issuer: "BankingApp.CheckingAccountService"
+      Jwt__Audience: "BankingApp.Clients"
+      Jwt__ExpirationMinutes: "60"
+      Kafka__BootstrapServers: "kafka:29092"
+      Redis__ConnectionString: "redis:6379"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - checking-account-data:/app/data
+    networks:
+      - bankingapp-network
+    restart: unless-stopped
+
+  # TransferService - Serviço de transferências
+  transfer-service:
+    build:
+      context: .
+      dockerfile: src/Services/TransferService/BankingApp.TransferService.Api/Dockerfile
+    container_name: bankingapp-transfer-service
+    ports:
+      - "5002:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: "Data Source=/app/data/transfer.db"
+      Jwt__SecretKey: "SrDPW2DT5H9Cm_VKHsL-h*lh6SGB9A1U"
+      Jwt__Issuer: "BankingApp.CheckingAccountService"
+      Jwt__Audience: "BankingApp.Clients"
+      Jwt__ExpirationMinutes: "60"
+      CheckingAccountService__BaseUrl: "http://checking-account-service:8080"
+      Kafka__BootstrapServers: "kafka:29092"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      checking-account-service:
+        condition: service_started
+    volumes:
+      - transfer-data:/app/data
+    networks:
+      - bankingapp-network
+    restart: unless-stopped
+
+  # FeeService - Serviço de tarifas
+  fee-service:
+    build:
+      context: .
+      dockerfile: src/Services/FeeService/BankingApp.FeeService.Worker/Dockerfile
+    container_name: bankingapp-fee-service
+    environment:
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: "Data Source=/app/data/fee.db"
+      FeeConfig__TransferFeeAmount: "2.00"
+      Kafka__BootstrapServers: "kafka:29092"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - fee-data:/app/data
+    networks:
+      - bankingapp-network
+    restart: unless-stopped
+
+  # ApiGateway
+  api-gateway:
+    build:
+      context: .
+      dockerfile: src/ApiGateway/Dockerfile
+    container_name: bankingapp-api-gateway
+    ports:
+      - "5003:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Jwt__SecretKey: "SrDPW2DT5H9Cm_VKHsL-h*lh6SGB9A1U"
+      Jwt__Issuer: "BankingApp.CheckingAccountService"
+      Jwt__Audience: "BankingApp.Clients"
+    depends_on:
+      - checking-account-service
+      - transfer-service
+    networks:
+      - bankingapp-network
+    restart: unless-stopped
+
+volumes:
+  checking-account-data:
+    name: bankingapp-checking-account-data
+  transfer-data:
+    name: bankingapp-transfer-data
+  fee-data:
+    name: bankingapp-fee-data
+  redis-data:
+    name: bankingapp-redis-data
+
+networks:
+  bankingapp-network:
+    name: bankingapp-network
+    driver: bridge
