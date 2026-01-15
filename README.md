@@ -200,7 +200,6 @@ curl -X POST http://localhost:5096/api/transfers \
   -d '{
     "destinationAccountNumber": 9876543210,
     "amount": 100.00,
-    "description": "Pagamento"
   }'
 ```
 
